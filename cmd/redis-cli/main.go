@@ -4,30 +4,51 @@ import (
 	"bufio"
 	"flag"
 	"fmt"
+	"log"
 	"net"
 	"os"
 	"regexp"
-	// "strings"
+	"strings"
+
+	"github.com/daniel-melanson/redis-clone/redis"
 )
 
-func connect_redis(host string, port int) (net.Conn, string) {
+var ErrorLog *log.Logger
+
+func RedisConnection(host string, port int) (net.Conn, error) {
 	addr := fmt.Sprintf("%s:%d", host, port)
 	conn, err := net.Dial("tcp", addr)
 	// Connection is made
 	if err != nil {
-		msg := fmt.Sprint(err)
-
 		re := regexp.MustCompile(`^dial tcp [^:]+:[^:]+: .+: (.+)$`)
-		m := re.FindAllStringSubmatch(msg, -1)
+		match := re.FindAllStringSubmatch(err.Error(), -1)
 		// Matches a normal dial error
-		if len(m) > 0 && len(m[0]) > 1 {
-			return nil, fmt.Sprintf("Could not connect to Redis at %s: %s", addr, m[0][1])
+		if len(match) > 0 && len(match[0]) > 1 {
+			return nil, fmt.Errorf("could not connect to Redis at %s: %s", addr, match[0][1])
 		}
 
-		return nil, msg
+		return nil, err
 	}
 
-	return conn, ""
+	return conn, nil
+}
+
+func splitLine(line string) (commandName string, rawArgs string) {
+	line = strings.Trim(line, " \r\n")
+	first_word_index := strings.Index(line, " ")
+	if first_word_index != -1 {
+		commandName = line[:first_word_index]
+		rawArgs = line[first_word_index+1:]
+	} else {
+		commandName = line
+		rawArgs = ""
+	}
+
+	return
+}
+
+func init() {
+	ErrorLog = log.New(os.Stderr, "(error) ", 0)
 }
 
 func main() {
@@ -41,27 +62,29 @@ func main() {
 
 	flag.Parse()
 
-	conn, err := connect_redis(host, port)
-
-	var prefix string
-	if conn == nil {
-		fmt.Println(err)
-
-		prefix = "not connected"
-	} else {
-		prefix = host
+	conn, connErr := RedisConnection(host, port)
+	connName := "not connected"
+	if connErr == nil {
+		connName = host
 	}
 
+	registry := redis.Commands()
 	scanner := bufio.NewScanner(os.Stdin)
 	for {
-		fmt.Printf("%s> ", prefix)
+		fmt.Printf("%s> ", connName)
 		if !scanner.Scan() {
 			break
 		}
 
-		// line := scanner.Text()
-		if conn == nil {
-			fmt.Println(err)
+		line := scanner.Text()
+		commandName, rawArgs := splitLine(line)
+
+		_, exists := registry.Get(commandName)
+
+		if !exists {
+			ErrorLog.Printf("ERR unknown command '%s' with arguments: %s\n", commandName, rawArgs)
+		} else if conn == nil {
+			fmt.Println(connErr)
 		} else {
 			conn.Write([]byte("+OK\r\n"))
 		}
