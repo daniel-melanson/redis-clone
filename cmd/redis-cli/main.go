@@ -15,7 +15,7 @@ import (
 
 var ErrorLog *log.Logger
 
-func RedisConnection(host string, port int) (net.Conn, error) {
+func redisConnection(host string, port int) (net.Conn, error) {
 	addr := fmt.Sprintf("%s:%d", host, port)
 	conn, err := net.Dial("tcp", addr)
 	// Connection is made
@@ -62,10 +62,11 @@ func main() {
 
 	flag.Parse()
 
-	conn, connErr := RedisConnection(host, port)
-	connName := "not connected"
-	if connErr == nil {
-		connName = host
+	conn, connErr := redisConnection(host, port)
+	connName := host
+	if connErr != nil {
+		connName = "not connected"
+		fmt.Println(connErr)
 	}
 
 	registry := redis.Commands()
@@ -79,14 +80,16 @@ func main() {
 		line := scanner.Text()
 		commandName, rawArgs := splitLine(line)
 
-		_, exists := registry.Get(commandName)
+		command, exists := registry.Get(commandName)
 
 		if !exists {
 			ErrorLog.Printf("ERR unknown command '%s' with arguments: %s\n", commandName, rawArgs)
+		} else if command.Boundary == redis.Client {
+			command.Handler(conn, rawArgs)
 		} else if conn == nil {
 			fmt.Println(connErr)
 		} else {
-			conn.Write([]byte("+OK\r\n"))
+			command.Handler(conn, rawArgs)
 		}
 	}
 
