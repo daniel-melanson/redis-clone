@@ -9,9 +9,11 @@ import (
 )
 
 var ErrorLog *log.Logger
+var Registry CommandRegistry
 
 func init() {
 	ErrorLog = log.New(os.Stderr, "(error) ", 0)
+	Registry = commands()
 }
 
 type NetworkBoundary uint64
@@ -54,7 +56,7 @@ func (store CommandStore) Get(name string) (command Command, exists bool) {
 	return
 }
 
-func Commands() (commands CommandRegistry) {
+func commands() (commands CommandRegistry) {
 	commands = CommandStore{
 		make(map[string]Command),
 	}
@@ -95,8 +97,6 @@ func Commands() (commands CommandRegistry) {
 			os.Exit(0)
 		},
 	})
-
-	commands.add(Command{})
 
 	return
 }

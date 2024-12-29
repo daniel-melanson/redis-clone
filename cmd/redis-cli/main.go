@@ -7,7 +7,6 @@ import (
 	"log"
 	"net"
 	"os"
-	"regexp"
 	"strings"
 
 	"github.com/daniel-melanson/redis-clone/redis"
@@ -15,19 +14,12 @@ import (
 
 var ErrorLog *log.Logger
 
-func redisConnection(host string, port int) (net.Conn, error) {
+func makeConnection(host string, port int) (net.Conn, error) {
 	addr := fmt.Sprintf("%s:%d", host, port)
 	conn, err := net.Dial("tcp", addr)
-	// Connection is made
-	if err != nil {
-		re := regexp.MustCompile(`^dial tcp [^:]+:[^:]+: .+: (.+)$`)
-		match := re.FindAllStringSubmatch(err.Error(), -1)
-		// Matches a normal dial error
-		if len(match) > 0 && len(match[0]) > 1 {
-			return nil, fmt.Errorf("could not connect to Redis at %s: %s", addr, match[0][1])
-		}
 
-		return nil, err
+	if err != nil {
+		return nil, fmt.Errorf("could not connect to Redis at %s:%d: %w", host, port, err)
 	}
 
 	return conn, nil
@@ -62,14 +54,13 @@ func main() {
 
 	flag.Parse()
 
-	conn, connErr := redisConnection(host, port)
+	conn, connErr := makeConnection(host, port)
 	connName := host
 	if connErr != nil {
 		connName = "not connected"
 		fmt.Println(connErr)
 	}
 
-	registry := redis.Commands()
 	scanner := bufio.NewScanner(os.Stdin)
 	for {
 		fmt.Printf("%s> ", connName)
@@ -80,7 +71,7 @@ func main() {
 		line := scanner.Text()
 		commandName, rawArgs := splitLine(line)
 
-		command, exists := registry.Get(commandName)
+		command, exists := redis.Registry.Get(commandName)
 
 		if !exists {
 			ErrorLog.Printf("ERR unknown command '%s' with arguments: %s\n", commandName, rawArgs)
